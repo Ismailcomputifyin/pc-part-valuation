@@ -7,83 +7,45 @@ const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-// 🟣 GameLoot scraper
+// 🔵 GameLoot scraper (single source now)
 async function searchGameloot(q) {
   try {
-    const { data } = await axios.get(`https://gameloot.in/shop/?s=${encodeURIComponent(q)}`);
+    const url = `https://gameloot.in/shop/?s=${encodeURIComponent(q)}`;
+    const { data } = await axios.get(url);
     const $ = cheerio.load(data);
     const prices = [];
-    $('.product').each((i, el) => {
-      const txt = $(el).find('.price').text().trim().replace(/₹|,|\s/g, '');
+
+    $('.product').each((_, el) => {
+      const txt = $(el).find('.price')
+                     .text()
+                     .trim()
+                     .replace(/₹|,|\s/g, '');
       const p = parseInt(txt);
       if (p) prices.push(p);
     });
+
     return prices;
-  } catch { return []; }
+  } catch (err) {
+    console.error('GameLoot scrape error:', err.message);
+    return [];
+  }
 }
 
-// 🟣 GameNation scraper
-async function searchGamenation(q) {
-  try {
-    const { data } = await axios.get(`https://gamenation.in/PCComponents/?SearchTerm=${encodeURIComponent(q)}`);
-    const $ = cheerio.load(data);
-    const prices = [];
-    $('.card-price, .ProductPrice').each((i, el) => {
-      const txt = $(el).text().replace(/₹|,|\s/g, '');
-      const p = parseInt(txt);
-      if (p) prices.push(p);
-    });
-    return prices;
-  } catch { return []; }
-}
-
-// 🟣 OLX India scraper
-async function searchOLX(q) {
-  try {
-    const { data } = await axios.get(`https://www.olx.in/items/q-${encodeURIComponent(q.replace(/\s+/g, '-'))}`);
-    const $ = cheerio.load(data);
-    const prices = [];
-    $('span._89yzn').each((i, el) => {
-      const txt = $(el).text().replace(/₹|,|\s/g, '');
-      const p = parseInt(txt);
-      if (p) prices.push(p);
-    });
-    return prices;
-  } catch { return []; }
-}
-
-// 🟣 eBay USA scraper
-async function searchEbay(q) {
-  try {
-    const { data } = await axios.get(`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}`);
-    const $ = cheerio.load(data);
-    const prices = [];
-    $('.s-item__price').each((i, el) => {
-      const txt = $(el).text().replace(/[\$,]/g, '');
-      const val = parseFloat(txt);
-      if (val) prices.push(Math.round(val * 85)); // Approx ₹85 per USD
-    });
-    return prices;
-  } catch { return []; }
-}
-
-// API Endpoint
 app.get('/valuation', async (req, res) => {
   const { query } = req.query;
   if (!query) return res.status(400).json({ error: 'Missing ?query= parameter' });
 
-  const [g1, g2, o, e] = await Promise.all([
-    searchGameloot(query),
-    searchGamenation(query),
-    searchOLX(query),
-    searchEbay(query),
-  ]);
-  const all = [...g1, ...g2, ...o, ...e];
-  if (!all.length) return res.status(404).json({ error: 'No prices found' });
+  const prices = await searchGameloot(query);
+  if (!prices.length) return res.status(404).json({ error: 'No prices found on GameLoot' });
 
-  const low = Math.min(...all), high = Math.max(...all);
-  const avg = Math.round(all.reduce((a, b) => a + b, 0) / all.length);
-  res.json({ low, high, avg, count: all.length });
+  const low = Math.min(...prices);
+  const high = Math.max(...prices);
+  const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
+
+  res.json({
+    source: 'gameloot',
+    low, high, avg, count: prices.length,
+  });
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`💸 GameLoot valuation API running on port ${PORT}`));
