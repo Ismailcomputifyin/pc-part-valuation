@@ -1,2 +1,2 @@
-# pc-part-valuation
-Backend to get valuation of used PC parts
+# PC Part Valuation API
+An API to fetch valuation for used PC parts from various marketplaces.
